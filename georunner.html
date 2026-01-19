@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoRunner - Jump & Run</title>
+    <style>
+        :root {
+            --bg-color: #0f0f1a;
+            --accent-color: #00f3ff;
+            --danger-color: #ff0055;
+            --text-color: #ffffff;
+            --ui-bg: rgba(20, 20, 35, 0.9);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* Spiel-Container */
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 450px;
+            box-shadow: 0 0 50px rgba(0, 243, 255, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Overlay (Hauptmenü, Game Over, Skin Shop) */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--ui-bg);
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            text-shadow: 0 0 10px var(--accent-color);
+            margin-bottom: 20px;
+            letter-spacing: 4px;
+        }
+
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            color: #ccc;
+        }
+
+        /* Buttons */
+        .btn {
+            background: transparent;
+            border: 2px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: var(--accent-color);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px var(--accent-color);
+            transform: scale(1.05);
+        }
+
+        .btn-secondary {
+            border-color: #aaa;
+            color: #aaa;
+        }
+
+        .btn-secondary:hover {
+            background: #aaa;
+            color: var(--bg-color);
+            box-shadow: 0 0 15px #aaa;
+        }
+
+        /* HUD (Heads Up Display) im Spiel */
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            z-index: 5;
+        }
+
+        /* Skin Editor Styles */
+        .skin-options {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .color-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+        }
+
+        .color-preview:hover {
+            transform: scale(1.1);
+        }
+
+        .color-preview.selected {
+            border-color: white;
+            box-shadow: 0 0 10px white;
+        }
+
+        .particle-preview {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            background: white;
+            border-radius: 50%;
+            margin: 0 5px;
+        }
+
+        /* Mobile Controls Hinweis */
+        .controls-hint {
+            margin-top: 30px;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .key {
+            display: inline-block;
+            border: 1px solid #aaa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #222;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Canvas -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- HUD -->
+        <div id="hud" class="hidden">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="highscoreDisplay">Highscore: 0</div>
+        </div>
+
+        <!-- Hauptmenü -->
+        <div id="menuScreen" class="ui-layer">
+            <h1>GeoRunner</h1>
+            <p>Weiche den Hindernissen aus!</p>
+            <button class="btn" onclick="startGame()">Starten</button>
+            <button class="btn btn-secondary" onclick="openSkinShop()">Skins ändern</button>
+            <div class="controls-hint">
+                Steuerung: <span class="key">LEERTASTE</span> oder <span class="key">↑</span> zum Springen
+            </div>
+        </div>
+
+        <!-- Skin Shop -->
+        <div id="skinScreen" class="ui-layer hidden">
+            <h2>Skin Shop</h2>
+            <p>Wähle deine Farbe:</p>
+            <div class="skin-options" id="colorOptions">
+                <!-- Wird per JS gefüllt -->
+            </div>
+            <button class="btn" onclick="closeSkinShop()">Zurück</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="ui-layer hidden">
+            <h1 style="color: var(--danger-color)">Game Over</h1>
+            <p>Dein Score: <span id="finalScore">0</span></p>
+            <button class="btn" onclick="startGame()">Nochmal versuchen</button>
+            <button class="btn btn-secondary" onclick="backToMenu()">Hauptmenü</button>
+        </div>
+    </div>
+
+    <script>
+        // --- KONFIGURATION & SETUP ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Logische Größe (für konsistente Gameplay-Physik)
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 450;
+        
+        // Anpassung an Canvas-Größe
+        function resize() {
+            // Die interne Auflösung bleibt fest, CSS skaliert es
+            canvas.width = GAME_WIDTH;
+            canvas.height = GAME_HEIGHT;
+        }
+        resize();
+
+        // Spielzustände
+        let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER
+        let animationId;
+        let score = 0;
+        let highscore = localStorage.getItem('geoRunnerHighscore') || 0;
+        let frameCount = 0;
+        let gameSpeed = 5;
+
+        // Spieler-Einstellungen
+        let playerColor = '#00f3ff';
+        const availableColors = ['#00f3ff', '#ff0055', '#ccff00', '#aa00ff', '#ff9900'];
+
+        // --- AUDIO KONTEXT (Synthesizer) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'jump') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'crash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // --- KLASSEN ---
+
+        class Player {
+            constructor() {
+                this.size = 30;
+                this.x = 100;
+                this.y = GAME_HEIGHT - 100;
+                this.dy = 0;
+                this.jumpForce = -13;
+                this.gravity = 0.6;
+                this.grounded = false;
+                this.rotation = 0;
+                this.trail = [];
+            }
+
+            jump() {
+                if (this.grounded) {
+                    this.dy = this.jumpForce;
+                    this.grounded = false;
+                    playSound('jump');
+                    createParticles(this.x + this.size/2, this.y + this.size, 5, '#fff');
+                }
+            }
+
+            update() {
+                // Physik
+                this.dy += this.gravity;
+                this.y += this.dy;
+
+                // Boden-Kollision
+                if (this.y + this.size > GAME_HEIGHT - 50) {
+                    this.y = GAME_HEIGHT - 50 - this.size;
+                    this.dy = 0;
+                    this.grounded = true;
+                    this.rotation = 0; // Rotation zurücksetzen, wenn man landet
+                } else {
+                    // Rotation in der Luft
+                    this.rotation += 0.1; 
+                }
+
+                // Trail Effekt (für die "Geometrie"-Optik)
+                if (frameCount % 3 === 0) {
+                    this.trail.push({x: this.x, y: this.y, alpha: 0.6});
+                    if (this.trail.length > 5) this.trail.shift();
+                }
+            }
+
+            draw() {
+                // Trail zeichnen
+                this.trail.forEach(t => {
+                    ctx.globalAlpha = t.alpha;
+                    ctx.fillStyle = playerColor;
+                    ctx.fillRect(t.x, t.y, this.size, this.size);
+                    t.alpha -= 0.05;
+                });
+                ctx.globalAlpha = 1.0;
+
+                // Spieler zeichnen (rotiert)
+                ctx.save();
+                ctx.translate(this.x + this.size/2, this.y + this.size/2);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = playerColor;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = playerColor;
+                ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                
+                // Augen für Persönlichkeit
+                ctx.fillStyle = '#fff';
+                ctx.shadowBlur = 0;
+                ctx.fillRect(4, -6, 6, 6);
+                ctx.fillRect(4, 2, 6, 6);
+                
+                ctx.restore();
+            }
+        }
+
+        class Obstacle {
+            constructor() {
+                this.w = 30 + Math.random() * 20;
+                this.h = 30 + Math.random() * 30;
+                this.x = GAME_WIDTH + 100;
+                this.y = GAME_HEIGHT - 50 - this.h;
+                this.type = Math.random() > 0.7 ? 'fly' : 'block'; // 30% Chance auf fliegendes Hindernis
+                
+                if (this.type === 'fly') {
+                    this.y -= (40 + Math.random() * 40); // Höher platziert
+                    this.h = 30;
+                    this.w = 30;
+                    this.isSpike = true;
+                } else {
+                    this.isSpike = Math.random() > 0.5; // 50% Block, 50% Dreieck
+                }
+                this.markedForDeletion = false;
+            }
+
+            update() {
+                this.x -= gameSpeed;
+                if (this.x + this.w < 0) this.markedForDeletion = true;
+            }
+
+            draw() {
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff0055';
+
+                if (this.isSpike) {
+                    // Dreieck zeichnen (Dreiecks-Mathematik)
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y + this.h);
+                    ctx.lineTo(this.x + this.w / 2, this.y);
+                    ctx.lineTo(this.x + this.w, this.y + this.h);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Block zeichnen
+                    ctx.fillRect(this.x, this.y, this.w, this.h);
+                }
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 4 + 2;
+                this.speedX = Math.random() * 6 - 3;
+                this.speedY = Math.random() * 6 - 3;
+                this.color = color;
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= 0.02;
+            }
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // --- GLOBALE VARIABLEN ---
+        let player;
+        let obstacles = [];
+        let particles = [];
+        let obstacleTimer = 0;
+        let backgroundOffset = 0;
+
+        // --- FUNKTIONEN ---
+
+        function init() {
+            player = new Player();
+            obstacles = [];
+            particles = [];
+            score = 0;
+            gameSpeed = 5;
+            obstacleTimer = 0;
+            frameCount = 0;
+            document.getElementById('highscoreDisplay').innerText = `Highscore: ${highscore}`;
+        }
+
+        function createParticles(x, y, count, color) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnObstacles() {
+            obstacleTimer++;
+            // Zufällige Spawnrate, basierend auf Geschwindigkeit
+            let spawnRate = Math.max(60, 150 - gameSpeed * 5); 
+            
+            if (obstacleTimer > spawnRate + Math.random() * 50) {
+                obstacles.push(new Obstacle());
+                obstacleTimer = 0;
+            }
+        }
+
+        function checkCollision(player, obstacle) {
+            // Einfache AABB Kollision (mit etwas Toleranz für besseres "Game Feel")
+            const padding = 6;
+            return (
+                player.x + padding < obstacle.x + obstacle.w - padding &&
+                player.x + player.size - padding > obstacle.x + padding &&
+                player.y + padding < obstacle.y + obstacle.h - padding &&
+                player.y + player.size - padding > obstacle.y + padding
+            );
+        }
+
+        function drawBackground() {
+            // Boden zeichnen
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, GAME_HEIGHT - 50, GAME_WIDTH, 50);
+            
+            // Neon-Linie am Boden
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f3ff';
+            ctx.beginPath();
+            ctx.moveTo(0, GAME_HEIGHT - 50);
+            ctx.lineTo(GAME_WIDTH, GAME_HEIGHT - 50);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Hintergrund Raster (Bewegung simulieren)
+            backgroundOffset -= gameSpeed * 0.5;
+            if (backgroundOffset <= -40) backgroundOffset = 0;
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            
+            // Vertikale Linien
+            for (let i = backgroundOffset; i < GAME_WIDTH; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, GAME_HEIGHT);
+                ctx.stroke();
+            }
+            // Horizontale Linien
+            for (let i = 0; i < GAME_HEIGHT; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(GAME_WIDTH, i);
+                ctx.stroke();
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            playSound('crash');
+            
+            // Partikel-Explosion am Spieler
+            createParticles(player.x + player.size/2, player.y + player.size/2, 20, playerColor);
+            
+            // Highscore Logik
+            if (score > highscore) {
+                highscore = score;
+                localStorage.setItem('geoRunnerHighscore', highscore);
+            }
+
+            document.getElementById('finalScore').innerText = Math.floor(score);
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('hud').classList.add('hidden');
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Hintergrund
+            drawBackground();
+
+            // Spieler Update
+            player.update();
+            player.draw();
+
+            // Hindernisse Logik
+            spawnObstacles();
+            obstacles.forEach((obs, index) => {
+                obs.update();
+                obs.draw();
+                
+                if (checkCollision(player, obs)) {
+                    gameOver();
+                }
+
+                if (obs.markedForDeletion) {
+                    obstacles.splice(index, 1);
+                }
+            });
+
+            // Partikel Logik
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                if (p.life <= 0) particles.splice(index, 1);
+            });
+
+            // Score & Schwierigkeit
+            score += 0.1;
+            gameSpeed += 0.0005; // Langsamer beschleunigen
+            document.getElementById('scoreDisplay').innerText = `Score: ${Math.floor(score)}`;
+            
+            frameCount++;
+            animationId = requestAnimationFrame(update);
+        }
+        
+        // Render-Loop für Menüs (damit Hintergrund sich bewegt)
+        function menuLoop() {
+            if (gameState !== 'MENU' && gameState !== 'GAMEOVER') return;
+            // Wir zeichnen hier nicht das komplette Spiel neu, sondern nur einen Effekt
+            // Um Code zu sparen, zeichnen wir im GameOver nicht das Spiel weiter, sondern lassen den Screen stehen
+            // Im Menü könnte man einen animierten Hintergrund haben, hier aber statisch für Performance
+        }
+
+        // --- STEUERUNG & UI ---
+
+        function handleInput(e) {
+            // Space, Pfeil oben oder Mausklick
+            if ((e.code === 'Space' || e.code === 'ArrowUp') && gameState === 'PLAYING') {
+                player.jump();
+            }
+        }
+
+        function handleTouch(e) {
+            if (gameState === 'PLAYING') {
+                e.preventDefault(); // Verhindert Zoom/Scroll
+                player.jump();
+            }
+        }
+
+        window.addEventListener('keydown', handleInput);
+        canvas.addEventListener('mousedown', handleTouch);
+        canvas.addEventListener('touchstart', handleTouch, {passive: false});
+
+        function startGame() {
+            init();
+            gameState = 'PLAYING';
+            document.getElementById('menuScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            update();
+        }
+
+        function backToMenu() {
+            gameState = 'MENU';
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('menuScreen').classList.remove('hidden');
+            document.getElementById('hud').classList.add('hidden');
+        }
+
+        // --- SKIN SYSTEM ---
+        
+        function openSkinShop() {
+            document.getElementById('menuScreen').classList.add('hidden');
+            document.getElementById('skinScreen').classList.remove('hidden');
+            renderColorOptions();
+        }
+
+        function closeSkinShop() {
+            document.getElementById('skinScreen').classList.add('hidden');
+            document.getElementById('menuScreen').classList.remove('hidden');
+        }
+
+        function renderColorOptions() {
+            const container = document.getElementById('colorOptions');
+            container.innerHTML = ''; // Clear existing
+
+            availableColors.forEach(color => {
+                const div = document.createElement('div');
+                div.className = `color-preview ${playerColor === color ? 'selected' : ''}`;
+                div.style.backgroundColor = color;
+                div.style.boxShadow = `0 0 10px ${color}`;
+                div.onclick = () => {
+                    playerColor = color;
+                    // Visuelles Feedback im Menü
+                    document.documentElement.style.setProperty('--accent-color', color);
+                    renderColorOptions();
+                };
+                container.appendChild(div);
+            });
+        }
+
+        // Initiale Highscore Anzeige
+        document.getElementById('highscoreDisplay').innerText = `Highscore: ${highscore}`;
+
+    </script>
+</body>
+</html>
